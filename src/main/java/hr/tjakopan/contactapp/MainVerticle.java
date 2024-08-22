@@ -5,6 +5,8 @@ import gg.jte.ContentType;
 import gg.jte.TemplateEngine;
 import gg.jte.output.Utf8ByteOutput;
 import gg.jte.resolve.DirectoryCodeResolver;
+import hr.tjakopan.contactapp.ValidationError.EmailValidationError;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.vertx.core.AbstractVerticle;
 import io.vertx.core.http.HttpHeaders;
@@ -40,6 +42,7 @@ public class MainVerticle extends AbstractVerticle {
   public Uni<Void> asyncStart() {
     final TemplateEngine templateEngine = createTemplateEngine();
     final Contacts contacts = new Contacts(vertx);
+    final Archiver archiver = new Archiver(vertx);
 
     final Router router = Router.router(vertx);
 
@@ -54,13 +57,21 @@ public class MainVerticle extends AbstractVerticle {
     router.route("/static/*").handler(staticHandler);
 
     router.get("/").handler(this::index);
-    router.get("/contacts").handler(ctx -> contacts(templateEngine, contacts, ctx));
+    router.get("/contacts").handler(ctx -> contacts(templateEngine, contacts, archiver, ctx));
+    router.delete("/contacts").handler(ctx -> contactsDeleteAll(templateEngine, contacts, archiver, ctx));
     router.get("/contacts/new").handler(ctx -> contactsNewGet(templateEngine, ctx));
+    router.get("/contacts/count").handler(ctx -> contactsCount(contacts, ctx));
+    router.get("/contacts/archive").handler(ctx -> archiveStatus(templateEngine, archiver, ctx));
+    router.get("/contacts/archive/file").handler(ctx -> archiveContent(archiver, ctx));
+    router.get("/contacts/:contactId/email").handler(ctx -> contactsEmailGet(contacts, ctx));
     router.get("/contacts/:contactId").handler(ctx -> contactsView(templateEngine, contacts, ctx));
     router.post("/contacts/new").handler(ctx -> contactsNew(templateEngine, contacts, ctx));
     router.get("/contacts/:contactId/edit").handler(ctx -> contactsEditGet(templateEngine, contacts, ctx));
     router.post("/contacts/:contactId/edit").handler(ctx -> contactsEditPost(templateEngine, contacts, ctx));
-    router.post("/contacts/:contactId/delete").handler(ctx -> contactsDelete(contacts, ctx));
+    router.delete("/contacts/archive").handler(ctx -> resetArchive(templateEngine, archiver, ctx));
+    router.delete("/contacts/:contactId").handler(ctx -> contactsDelete(contacts, ctx));
+    router.post("/contacts/archive").handler(ctx -> startArchive(templateEngine, archiver, ctx));
+
 
     return contacts.loadDb()
       .onItem().transformToUni(v -> vertx.createHttpServer().requestHandler(router).listen(8888))
@@ -82,17 +93,34 @@ public class MainVerticle extends AbstractVerticle {
   }
 
   private void index(final RoutingContext ctx) {
-    ctx.redirect("/contacts").subscribe().with(NOOP, FAILED_RESPONSE);
+    redirect(ctx, "/contacts");
   }
 
-  private void contacts(final TemplateEngine templateEngine, final Contacts contacts, final RoutingContext ctx) {
+  private void contacts(final TemplateEngine templateEngine, final Contacts contacts, final Archiver archiver,
+                        final RoutingContext ctx) {
     final String search = getRequestParam(ctx.request(), "q");
     final Uni<List<ValidContact>> contactsUni = search != null ? contacts.search(search) : contacts.all();
     contactsUni.subscribe().with(list -> {
-      final Map<String, Object> params =
-        search != null ? Map.of("q", search, "contacts", list) : Map.of("contacts", list);
-      renderTemplate(templateEngine, ctx, "index.jte", params);
+      if ("search".equals(ctx.request().getHeader("HX-Trigger"))) {
+        final Map<String, Object> params = Map.of("contacts", list);
+        renderTemplate(templateEngine, ctx, "rows.jte", params);
+      } else {
+        archiver.state()
+          .subscribe().with(state -> {
+            final Map<String, Object> params = Map.of("q", search != null ? search : "", "contacts", list,
+              "archiverState", state);
+            renderTemplate(templateEngine, ctx, "index.jte", params);
+          }, ctx::fail);
+      }
     }, ctx::fail);
+  }
+
+  private void contactsCount(final Contacts contacts, final RoutingContext ctx) {
+    contacts.count()
+      .subscribe().with(count ->
+        ctx.response()
+          .end("(" + count + " total contacts)")
+          .subscribe().with(NOOP, FAILED_RESPONSE), ctx::fail);
   }
 
   private void contactsNewGet(final TemplateEngine templateEngine, final RoutingContext ctx) {
@@ -106,7 +134,7 @@ public class MainVerticle extends AbstractVerticle {
     contacts.save(c)
       .subscribe().with(v -> {
         FlashMessage.set(ctx, "Created new contact!");
-        ctx.redirect("/contacts").subscribe().with(NOOP, FAILED_RESPONSE);
+        redirect(ctx, "/contacts");
       }, e -> {
         if (e instanceof ValidationError ve) {
           renderTemplate(templateEngine, ctx, "new.jte",
@@ -152,7 +180,7 @@ public class MainVerticle extends AbstractVerticle {
     contacts.save(c)
       .subscribe().with(v -> {
         FlashMessage.set(ctx, "Updated contact!");
-        ctx.redirect("/contacts/" + contactId).subscribe().with(NOOP, FAILED_RESPONSE);
+        redirect(ctx, "/contacts/" + contactId);
       }, e -> {
         if (e instanceof ValidationError ve) {
           renderTemplate(templateEngine, ctx, "edit.jte",
@@ -172,13 +200,105 @@ public class MainVerticle extends AbstractVerticle {
         } else {
           contacts.delete(c)
             .subscribe().with(v -> {
-              FlashMessage.set(ctx, "Deleted contact!");
-              ctx.redirect("/contacts")
-                .subscribe()
-                .with(NOOP, FAILED_RESPONSE);
+              if ("delete-btn".equals(ctx.request().getHeader("HX-Trigger"))) {
+                FlashMessage.set(ctx, "Deleted contact!");
+                redirect(ctx, "/contacts", 303);
+              } else {
+                ctx.response().end().subscribe().with(NOOP, FAILED_RESPONSE);
+              }
             }, ctx::fail);
         }
       }, ctx::fail);
+  }
+
+  private void contactsDeleteAll(final TemplateEngine templateEngine, final Contacts contacts, final Archiver archiver,
+                                 final RoutingContext ctx) {
+    Multi.createFrom().iterable(ctx.request().params().getAll("selected_contact_ids"))
+      .onItem().transform(Integer::parseInt)
+      .onItem().transformToUniAndConcatenate(contacts::find)
+      .onItem().transformToUniAndConcatenate(contact -> {
+        if (contact == null) {
+          return Uni.createFrom().nullItem();
+        } else {
+          return contacts.delete(contact);
+        }
+      })
+      .collect().asList()
+      .subscribe().with(lv -> {
+        FlashMessage.set(ctx, "Deleted contacts!");
+        contacts.all()
+          .subscribe().with(list -> archiver.state()
+              .subscribe().with(state -> renderTemplate(templateEngine, ctx, "index.jte",
+                Map.of("contacts", list, "archiverState", state)), ctx::fail),
+            ctx::fail);
+      }, ctx::fail);
+  }
+
+  private void contactsEmailGet(final Contacts contacts, final RoutingContext ctx) {
+    final int contactId = Integer.parseInt(ctx.pathParam("contactId"));
+    contacts.find(contactId)
+      .subscribe().with(c -> {
+        if (c == null) {
+          ctx.fail(404);
+        } else {
+          final String email = getRequestParam(ctx.request(), "email");
+          final Contact newContact = new Contact(c.id(), c.firstName(), c.lastName(), c.phone(), email);
+          contacts.validate(newContact)
+            .subscribe().with(vc -> ctx.response().end().subscribe().with(NOOP, FAILED_RESPONSE), e -> {
+              if (e instanceof EmailValidationError ve) {
+                ctx.response().end(ve.getMessage()).subscribe().with(NOOP, FAILED_RESPONSE);
+              } else {
+                ctx.fail(e);
+              }
+            });
+        }
+      });
+  }
+
+  private void startArchive(final TemplateEngine templateEngine, final Archiver archiver, final RoutingContext ctx) {
+    archiver.run()
+      .subscribe().with(v -> archiver.state()
+        .subscribe().with(state -> renderTemplate(templateEngine, ctx, "archive_ui.jte",
+          Map.of("archiverState", state)), ctx::fail));
+  }
+
+  private void archiveStatus(final TemplateEngine templateEngine, final Archiver archiver, final RoutingContext ctx) {
+    archiver.state()
+      .subscribe().with(state -> renderTemplate(templateEngine, ctx, "archive_ui.jte",
+        Map.of("archiverState", state)), ctx::fail);
+  }
+
+  private void archiveContent(final Archiver archiver, final RoutingContext ctx) {
+    ctx.response()
+      .putHeader("Content-Disposition", "attachment; filename=archive.json")
+      .sendFile(archiver.archiveFile())
+      .subscribe().with(NOOP, FAILED_RESPONSE);
+  }
+
+  private void resetArchive(final TemplateEngine templateEngine, final Archiver archiver, final RoutingContext ctx) {
+    archiver.reset()
+      .onItem().transformToUni(v -> archiver.state())
+      .subscribe().with(state -> renderTemplate(templateEngine, ctx, "archive_ui.jte",
+        Map.of("archiverState", state)), ctx::fail);
+  }
+
+  private void redirect(final RoutingContext ctx, final String location) {
+    ctx.redirect(location).subscribe().with(NOOP, FAILED_RESPONSE);
+  }
+
+  private void redirect(final RoutingContext ctx, final String location, final int statusCode) {
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302
+    // According to the Mozilla Developer Network (MDN) web docs on the 302 Found response, this means that the HTTP
+    // method of the request will be unchanged when the redirected HTTP request is issued.
+    // We are now issuing a DELETE request with htmx and then being redirected to the /contacts path by flask.
+    // According to this logic, that would mean that the redirected HTTP request would still be a DELETE method. This
+    // means that, as it stands, the browser will issue a DELETE request to /contacts.
+    // This is definitely not what we want: we would like the HTTP redirect to issue a GET request, slightly
+    // modifying the Post/Redirect/Get behavior we discussed earlier to be a Delete/Redirect/Get.
+    // Fortunately, there is a different response code, 303 See Other, that does what we want: when a browser
+    // receives a 303 See Other redirect response, it will issue a GET to the new location.
+    ctx.response().setStatusCode(statusCode); // Instead of 302
+    redirect(ctx, location);
   }
 
   private void renderTemplate(final TemplateEngine templateEngine, final RoutingContext ctx, final String template) {
@@ -189,8 +309,8 @@ public class MainVerticle extends AbstractVerticle {
                               final Map<String, Object> params) {
     pauseRequest(ctx);
     try {
-      final String flashMessage = FlashMessage.getAndClear(ctx);
       Map<String, Object> actualParams = params;
+      final String flashMessage = FlashMessage.getAndClear(ctx);
       if (flashMessage != null) {
         actualParams = new HashMap<>(params);
         actualParams.put(FlashMessage.KEY, flashMessage);
@@ -226,6 +346,14 @@ public class MainVerticle extends AbstractVerticle {
     final String value = req.getParam(name);
     if (value != null && value.isEmpty()) {
       return null;
+    }
+    return value;
+  }
+
+  private static String getRequestParam(final HttpServerRequest req, final String name, final String defaultValue) {
+    final String value = req.getParam(name, defaultValue);
+    if (value.isEmpty()) {
+      return defaultValue;
     }
     return value;
   }

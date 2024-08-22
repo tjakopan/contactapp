@@ -11,7 +11,9 @@
       <legend>Contact values</legend>
       <p>
         <label for="email">Email</label>
-        <input name="email" id="email" type="text" placeholder="Email" value="${contact.email()}">
+        <input name="email" id="email" type="text" placeholder="Email" value="${contact.email()}"
+               hx-get="/contacts/${contact.id()}/email" hx-target="next .error"
+               hx-trigger="change, keyup delay:200ms changed">
         <span class="error">${errors.get("email")}</span>
       </p>
       <p>
@@ -32,9 +34,9 @@
       <button>Save</button>
     </fieldset>
   </form>
-  <form action="/contacts/${contact.id()}/delete" method="post">
-    <button>Delete contact</button>
-  </form>
+  <button id="delete-btn" hx-delete="/contacts/${contact.id()}" hx-target="body" hx-push-url="true"
+          hx-confirm="Are you sure you want to delete this contact?">Delete contact
+  </button>
   <p>
     <a href="/contacts/">Back</a>
   </p>

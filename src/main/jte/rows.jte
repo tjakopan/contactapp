@@ -1,0 +1,25 @@
+@import java.util.List
+@import hr.tjakopan.contactapp.ValidContact
+
+@param List<ValidContact> contacts
+
+@for(final ValidContact contact : contacts)
+  <tr>
+    <td><input type="checkbox" name="selected_contact_ids" value="${contact.id()}" x-model="selected"/></td>
+    <td>${contact.firstName()}</td>
+    <td>${contact.lastName()}</td>
+    <td>${contact.phone()}</td>
+    <td>${contact.email()}</td>
+    <td>
+      <div data-overflow-menu>
+        <button type="button" aria-haspopup="menu" aria-controls="contact-menu-${contact.id()}">Options</button>
+        <div role="menu" hidden id="contact-menu-${contact.id()}">
+          <a role="menuitem" href="/contacts/${contact.id()}/edit">Edit</a>
+          <a role="menuitem" href="/contacts/${contact.id()}">View</a>
+          <a role="menuitem" href="#" hx-delete="/contacts/${contact.id()}" hx-swap="outerHTML swap:1s"
+             hx-confirm="Are you sure you want to delete this contact?" hx-target="closest tr">Delete</a>
+        </div>
+      </div>
+    </td>
+  </tr>
+@endfor
