@@ -24,7 +24,7 @@
   @if(flashMessage != null)
     <div class="flash">${flashMessage}</div>
   @endif
+  ${content}
 </main>
-${content}
 </body>
 </html>
