@@ -18,7 +18,7 @@
 
     <vertx.version>4.5.9</vertx.version>
     <mutiny.vertx.version>3.14.0</mutiny.vertx.version>
-    <jte.version>3.1.12</jte.version>
+    <jte.version>3.1.16</jte.version>
     <checker.version>3.46.0</checker.version>
 
     <junit-jupiter.version>5.10.3</junit-jupiter.version>
