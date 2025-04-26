@@ -11,17 +11,16 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-    <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+    <maven-compiler-plugin.version>3.14.0</maven-compiler-plugin.version>
     <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
-    <maven-surefire-plugin.version>3.3.1</maven-surefire-plugin.version>
-    <exec-maven-plugin.version>3.4.0</exec-maven-plugin.version>
+    <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
+    <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
 
-    <vertx.version>4.5.9</vertx.version>
-    <mutiny.vertx.version>3.14.0</mutiny.vertx.version>
-    <jte.version>3.1.12</jte.version>
-    <checker.version>3.46.0</checker.version>
+    <vertx.version>4.5.14</vertx.version>
+    <mutiny.vertx.version>3.18.1</mutiny.vertx.version>
+    <jte.version>3.2.1</jte.version>
 
-    <junit-jupiter.version>5.10.3</junit-jupiter.version>
+    <junit-jupiter.version>5.12.2</junit-jupiter.version>
 
     <main.verticle>hr.tjakopan.contactapp.MainVerticle</main.verticle>
     <launcher.class>io.vertx.core.Launcher</launcher.class>
@@ -59,14 +58,9 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.5.6</version>
+      <version>1.5.18</version>
     </dependency>
 
-    <dependency>
-      <groupId>org.checkerframework</groupId>
-      <artifactId>checker-qual</artifactId>
-      <version>${checker.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.jspecify</groupId>
       <artifactId>jspecify</artifactId>
@@ -105,33 +99,6 @@
         <version>${maven-compiler-plugin.version}</version>
         <configuration>
           <release>21</release>
-          <fork>true</fork> <!-- Must fork or else JVM arguments are ignored. -->
-          <annotationProcessorPaths>
-            <path>
-              <groupId>org.checkerframework</groupId>
-              <artifactId>checker</artifactId>
-              <version>${checker.version}</version>
-            </path>
-          </annotationProcessorPaths>
-          <annotationProcessors>
-            <annotationProcessor>org.checkerframework.checker.nullness.NullnessChecker</annotationProcessor>
-          </annotationProcessors>
-          <compilerArgs combine.children="append">
-            <arg>-Xmaxerrs</arg>
-            <arg>10000</arg>
-            <arg>-Xmaxwarns</arg>
-            <arg>10000</arg>
-            <!-- <arg>-Awarns</arg> --> <!-- -Awarns turns type-checking errors into warnings. -->
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
-            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
-            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
-          </compilerArgs>
         </configuration>
       </plugin>
       <plugin>
