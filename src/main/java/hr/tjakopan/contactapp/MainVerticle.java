@@ -85,10 +85,10 @@ public class MainVerticle extends AbstractVerticle {
       // system property vertxweb.environment=dev.
       final CodeResolver codeResolver = new DirectoryCodeResolver(Path.of("src/main/jte"));
       templateEngine = TemplateEngine.create(codeResolver, Path.of("target/jte-classes"), ContentType.Html);
+      templateEngine.setBinaryStaticContent(true);
     } else {
       templateEngine = TemplateEngine.createPrecompiled(ContentType.Html);
     }
-    templateEngine.setBinaryStaticContent(true);
     return templateEngine;
   }
 

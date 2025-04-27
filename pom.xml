@@ -93,6 +93,21 @@
   </dependencies>
 
   <build>
+    <resources>
+      <!-- Workaround for jte bin files not being copied to target/classes, but now we also need to manually include src/main/resources. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <includes>
+          <include>**/*</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>${project.build.directory}/generated-sources/jte</directory>
+        <includes>
+          <include>**/*.bin</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -108,14 +123,13 @@
         <configuration>
           <binaryStaticContent>true</binaryStaticContent>
           <sourceDirectory>${project.basedir}/src/main/jte</sourceDirectory>
-          <targetDirectory>${project.build.directory}/jte-classes</targetDirectory>
           <contentType>Html</contentType>
         </configuration>
         <executions>
           <execution>
-            <phase>process-classes</phase>
+            <phase>generate-sources</phase>
             <goals>
-              <goal>precompile</goal>
+              <goal>generate</goal>
             </goals>
           </execution>
         </executions>
